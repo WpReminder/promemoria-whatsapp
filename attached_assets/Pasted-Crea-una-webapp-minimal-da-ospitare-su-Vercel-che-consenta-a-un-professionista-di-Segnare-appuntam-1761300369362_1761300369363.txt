@@ -1,0 +1,54 @@
+Crea una webapp minimal da ospitare su Vercel che consenta a un professionista di:
+
+Segnare appuntamenti (nome paziente, numero WhatsApp, data e ora).
+
+Salvare i dati su un piccolo database (usa Vercel Postgres o Neon gratuito).
+
+Inviare automaticamente un messaggio WhatsApp di promemoria (tramite WhatsApp Cloud API di Meta) un’ora prima dell’appuntamento.
+
+Tutto deve funzionare su dominio gratuito Vercel (*.vercel.app), senza configurazioni complesse.
+
+Specifiche tecniche:
+
+Frontend: HTML + CSS puri (design pulito e responsivo, senza framework).
+
+Interattività: solo JavaScript nativo per gestire il form e inviare i dati via fetch() alle API.
+
+Backend: Node.js, usando Serverless API Routes di Vercel (/api folder).
+
+Database: Vercel Postgres (crea una tabella appointments con id, name, phone, datetime, reminder_sent BOOLEAN).
+
+Scheduler: imposta un endpoint /api/reminder che controlla gli appuntamenti imminenti e invia i promemoria; sarà richiamato da Vercel Cron Jobs (ogni ora).
+
+Messaggi WhatsApp: usa la WhatsApp Cloud API con fetch o axios, includendo l’header Authorization: Bearer <ACCESS_TOKEN> e il JSON corretto per inviare un testo.
+
+Messaggio di esempio:
+"Ciao {{nome}}, ti ricordiamo il tuo appuntamento alle {{ora}} di oggi. A presto!"
+
+Configurazione ambientale: le variabili come ACCESS_TOKEN e PHONE_NUMBER_ID vanno in process.env.
+
+Validazione: controlla che i campi del form non siano vuoti e che il numero sia valido (prefisso +39 accettato).
+
+Design: semplice, centrato, sfondo chiaro, form con input moderni e pulsante color verde WhatsApp.
+
+Funzionamento completo:
+
+L’utente apre la webapp, compila il form.
+
+I dati vengono inviati al backend e salvati nel DB.
+
+Ogni ora, il cron job richiama /api/reminder, che invia i messaggi tramite WhatsApp Cloud API.
+
+Dopo l’invio, aggiorna reminder_sent = true per non duplicare.
+
+Fornisci:
+
+La struttura delle cartelle completa.
+
+Il codice HTML/CSS/JS.
+
+I file delle API Node.js (/api/add-appointment.js, /api/reminder.js).
+
+Esempio di schema SQL per creare la tabella.
+
+Istruzioni per il deploy su Vercel (con environment variables e cron job).
