@@ -1,10 +1,4 @@
 {
-  "crons": [
-    {
-      "path": "/api/reminder",
-      "schedule": "0 * * * *"
-    }
-  ],
   "env": {
     "DATABASE_URL": "@database_url",
     "WHATSAPP_ACCESS_TOKEN": "@whatsapp_access_token",
