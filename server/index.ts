@@ -34,31 +34,33 @@ app.use((req, res, next) => {
 (async () => {
   const server = await registerRoutes(app);
 
-  // Error handler
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
     res.status(status).json({ message });
-    throw err;
   });
 
+  // Serve static files in production
   if (process.env.NODE_ENV === "development") {
-    // Dev server con Vite
     await setupVite(app, server);
   } else {
-      // Produzione: serviamo i file statici
-      const distPath = path.resolve('dist/public');
-      if (!fs.existsSync(distPath)) {
-        throw new Error(`Build directory not found: ${distPath}. Run "npm run build" first.`);
-      }
-      app.use(express.static(distPath));
-      app.use('*', (_req, res) => {
-      res.sendFile(path.resolve(distPath, 'index.html'));
+    // risolvi percorso sempre dalla root effettiva di deploy
+    const distPath = path.join(process.cwd(), "dist", "public");
+    console.log("Serving static files from:", distPath);
+
+    if (!fs.existsSync(path.join(distPath, "index.html"))) {
+      console.error("⚠️ index.html non trovato in", distPath);
+    }
+
+    app.use(express.static(distPath));
+
+    app.get("*", (_req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
     });
   }
 
-  const port = parseInt(process.env.PORT || "5000", 10);
-  server.listen({ port, host: "0.0.0.0", reusePort: true }, () => {
-    log(`Server running on port ${port}`);
+  const port = process.env.PORT || 5000;
+  server.listen(port, () => {
+    log(`✅ Server running on port ${port}`);
   });
 })();
