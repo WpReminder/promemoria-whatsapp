@@ -47,7 +47,7 @@ app.use((req, res, next) => {
     await setupVite(app, server);
   } else {
       // Produzione: serviamo i file statici
-      const distPath = path.resolve(import.meta.dirname, 'dist/public');
+      const distPath = path.resolve('dist/public');
       if (!fs.existsSync(distPath)) {
         throw new Error(`Build directory not found: ${distPath}. Run "npm run build" first.`);
       }
