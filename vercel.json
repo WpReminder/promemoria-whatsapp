@@ -1,7 +1,1 @@
-{
-  "env": {
-    "DATABASE_URL": "@DATABASE_URL",
-    "WHATSAPP_ACCESS_TOKEN": "@whatsapp_access_token",
-    "WHATSAPP_PHONE_NUMBER_ID": "@whatsapp_phone_number_id"
-  }
-}
+
