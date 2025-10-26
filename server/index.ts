@@ -46,13 +46,15 @@ app.use((req, res, next) => {
     // Dev server con Vite
     await setupVite(app, server);
   } else {
-    // Produzione: serviamo i file statici
-    const distPath = path.resolve(__dirname, "..", "client", "dist", "public");
-    if (!fs.existsSync(distPath)) {
-      throw new Error(`Build directory not found: ${distPath}. Run "npm run build" first.`);
-    }
-    app.use(express.static(distPath));
-    app.get("*", (_req, res) => res.sendFile(path.join(distPath, "index.html")));
+      // Produzione: serviamo i file statici
+      const distPath = path.resolve(import.meta.dirname, 'dist/public');
+      if (!fs.existsSync(distPath)) {
+        throw new Error(`Build directory not found: ${distPath}. Run "npm run build" first.`);
+      }
+      app.use(express.static(distPath));
+      app.use('*', (_req, res) => {
+      res.sendFile(path.resolve(distPath, 'index.html'));
+    });
   }
 
   const port = parseInt(process.env.PORT || "5000", 10);
