@@ -40,22 +40,24 @@ app.use((req, res, next) => {
     res.status(status).json({ message });
   });
 
-  // Serve static files in production
   if (process.env.NODE_ENV === "development") {
     await setupVite(app, server);
   } else {
-    // risolvi percorso sempre dalla root effettiva di deploy
+    // Usa sempre la root assoluta del progetto (importante su Vercel)
     const distPath = path.join(process.cwd(), "dist", "public");
-    console.log("Serving static files from:", distPath);
+    console.log("📂 Serving static files from:", distPath);
 
-    if (!fs.existsSync(path.join(distPath, "index.html"))) {
-      console.error("⚠️ index.html non trovato in", distPath);
-    }
-
+    // Serve static files
     app.use(express.static(distPath));
 
+    // Catch-all per React Router / SPA
     app.get("*", (_req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+      const indexFile = path.join(distPath, "index.html");
+      if (!fs.existsSync(indexFile)) {
+        console.error("❌ index.html non trovato in:", indexFile);
+        return res.status(500).send("index.html non trovato");
+      }
+      res.sendFile(indexFile);
     });
   }
 
