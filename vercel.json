@@ -1,14 +1,4 @@
 {
   "buildCommand": "npm run build",
-  "outputDirectory": "dist/public",
-  "installCommand": "npm install",
-  "rewrites": [
-    { "source": "/api/login", "destination": "/api/login" },
-    { "source": "/api/appointments", "destination": "/api/appointments" },
-    { "source": "/api/reminder", "destination": "/api/reminder" }
-  ],
-  "crons": [{
-    "path": "/api/reminder",
-    "schedule": "0 * * * *"
-  }]
+  "outputDirectory": "dist/public"
 }
