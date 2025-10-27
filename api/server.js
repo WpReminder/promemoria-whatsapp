@@ -54,6 +54,7 @@ const loginHtml = `
       input { display: block; width: 300px; padding: 0.75rem; font-size: 1rem; border: 1px solid #d4d4d8; border-radius: 0.25rem; margin-bottom: 1rem;}
       button { width: 100%; padding: 0.75rem; font-size: 1rem; background: #22c55e; color: white; border: none; border-radius: 0.25rem; margin-top: 0.5rem; cursor: pointer; transition: background 0.2s; }
       button:hover { background: #16a34a; }
+      .error { color: #ef4444; text-align: center; margin-top: 1rem; }
     </style>
   </head>
   <body>
@@ -65,11 +66,6 @@ const loginHtml = `
   </body>
   </html>
 `;
-
-// Route: Login page
-app.get('/login', (req, res) => {
-  res.send(loginHtml);
-});
 
 // Route: Login POST
 app.post('/api/login', (req, res) => {
@@ -84,57 +80,45 @@ app.post('/api/login', (req, res) => {
       path: '/',
       sameSite: 'lax'
     });
-    res.redirect('/');
+    // Invece di redirect, servi direttamente l'HTML con meta refresh
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta http-equiv="refresh" content="0;url=/" />
+        <title>Login Successful</title>
+      </head>
+      <body>
+        <p>Login successful. Redirecting...</p>
+        <script>window.location.href = '/';</script>
+      </body>
+      </html>
+    `);
   } else {
     console.warn('❌ Tentativo di login fallito');
-    res.redirect('/login');
+    res.send(loginHtml + '<div class="error">Password errata</div>');
   }
 });
 
-// PROTEZIONE ESPLICITA DELLA ROOT - PRIMA DI TUTTO
-app.get('/', (req, res, next) => {
-  const authenticated = isAuthenticated(req);
-  console.log(`🏠 Root access - Auth: ${authenticated}`);
-  
-  if (!authenticated) {
-    console.log(`🚫 Redirecting to /login`);
-    return res.redirect('/login');
-  }
-  
-  // Se autenticato, procedi a servire index.html
-  next();
-});
-
-// Middleware globale: proteggi tutto tranne login
-app.use((req, res, next) => {
-  const isPublicPath = (
-    req.path === '/login' || 
-    req.path === '/api/login' ||
-    req.path === '/favicon.ico' ||
-    req.path.startsWith('/assets')
-  );
-
-  if (isPublicPath) {
+// Middleware di protezione per API
+app.use('/api', (req, res, next) => {
+  // Salta il controllo per /api/login
+  if (req.path === '/login') {
     return next();
   }
 
   const authenticated = isAuthenticated(req);
-  console.log(`🔐 ${req.method} ${req.path} - Auth: ${authenticated}`);
+  console.log(`🔐 API ${req.method} ${req.path} - Auth: ${authenticated}`);
 
   if (!authenticated) {
-    if (req.path.startsWith('/api/')) {
-      console.log(`🚫 API bloccata: ${req.path}`);
-      return res.status(401).json({ error: "Unauthorized" });
-    } else {
-      console.log(`🚫 Redirect a /login da ${req.path}`);
-      return res.redirect('/login');
-    }
+    console.log(`🚫 API bloccata: ${req.path}`);
+    return res.status(401).json({ error: "Unauthorized" });
   }
 
   next();
 });
 
-// Importa le route dal tuo server compilato
+// Importa le route dal server compilato
 try {
   const serverModule = await import('../dist/index.js');
   console.log('✅ Server routes loaded from dist/index.js');
@@ -142,10 +126,7 @@ try {
   console.error('⚠️ Could not load server routes:', error.message);
 }
 
-// RIMUOVI LE API FALLBACK - le API vere sono nel dist/index.js importato sopra
-// Se l'import funziona, queste non verranno mai chiamate
-
-// Serve static files - prova multipli path
+// Trova la directory dist
 let distPath;
 const possiblePaths = [
   path.join(__dirname, '..', 'dist', 'public'),
@@ -154,7 +135,6 @@ const possiblePaths = [
 ];
 
 for (const testPath of possiblePaths) {
-  console.log(`🔍 Testing path: ${testPath}`);
   if (fs.existsSync(testPath)) {
     distPath = testPath;
     console.log(`✅ Found dist at: ${distPath}`);
@@ -164,31 +144,33 @@ for (const testPath of possiblePaths) {
 
 if (!distPath) {
   console.error('❌ Could not find dist/public directory');
-  console.log('📂 Current directory:', process.cwd());
-  console.log('📂 __dirname:', __dirname);
-  
-  app.get('*', (req, res) => {
-    res.status(500).send(`
-      <h1>Configuration Error</h1>
-      <p>Could not locate frontend files</p>
-      <pre>Searched paths:\n${possiblePaths.join('\n')}</pre>
-      <pre>CWD: ${process.cwd()}</pre>
-      <pre>__dirname: ${__dirname}</pre>
-    `);
+  app.use('*', (req, res) => {
+    res.status(500).send('Frontend files not found');
   });
 } else {
-  // Serve static assets (CSS, JS, immagini)
+  // Serve static assets PUBBLICI (CSS, JS, immagini) SENZA controllo auth
   app.use('/assets', express.static(path.join(distPath, 'assets')));
-  app.use(express.static(distPath));
-
-  // SPA fallback - con controllo auth finale
-  app.get('*', (req, res) => {
-    // Controllo finale prima di servire index.html
-    if (!isAuthenticated(req)) {
-      console.log(`🚫 SPA fallback: redirect a /login da ${req.path}`);
-      return res.redirect('/login');
+  
+  // TUTTE le altre richieste: controlla auth PRIMA di servire qualsiasi file
+  app.use((req, res, next) => {
+    const authenticated = isAuthenticated(req);
+    console.log(`📄 Request ${req.path} - Auth: ${authenticated}`);
+    
+    if (!authenticated) {
+      // Non autenticato: servi la pagina di login invece del frontend
+      console.log(`🚫 Serving login page for ${req.path}`);
+      return res.send(loginHtml);
     }
     
+    // Autenticato: procedi
+    next();
+  });
+  
+  // Ora servi i file statici (solo se autenticato)
+  app.use(express.static(distPath));
+
+  // SPA fallback (solo se autenticato)
+  app.get('*', (req, res) => {
     const indexFile = path.join(distPath, 'index.html');
     if (fs.existsSync(indexFile)) {
       res.sendFile(indexFile);
