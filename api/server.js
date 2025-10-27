@@ -91,13 +91,26 @@ app.post('/api/login', (req, res) => {
   }
 });
 
+// PROTEZIONE ESPLICITA DELLA ROOT - PRIMA DI TUTTO
+app.get('/', (req, res, next) => {
+  const authenticated = isAuthenticated(req);
+  console.log(`🏠 Root access - Auth: ${authenticated}`);
+  
+  if (!authenticated) {
+    console.log(`🚫 Redirecting to /login`);
+    return res.redirect('/login');
+  }
+  
+  // Se autenticato, procedi a servire index.html
+  next();
+});
+
 // Middleware globale: proteggi tutto tranne login
 app.use((req, res, next) => {
   const isPublicPath = (
     req.path === '/login' || 
     req.path === '/api/login' ||
     req.path === '/favicon.ico' ||
-    req.path.startsWith('/_next') ||
     req.path.startsWith('/assets')
   );
 
@@ -113,7 +126,7 @@ app.use((req, res, next) => {
       console.log(`🚫 API bloccata: ${req.path}`);
       return res.status(401).json({ error: "Unauthorized" });
     } else {
-      console.log(`🚫 Frontend bloccato, redirect a /login`);
+      console.log(`🚫 Redirect a /login da ${req.path}`);
       return res.redirect('/login');
     }
   }
@@ -122,31 +135,15 @@ app.use((req, res, next) => {
 });
 
 // Importa le route dal tuo server compilato
-let serverRoutes;
 try {
-  // Prova a importare il server compilato
   const serverModule = await import('../dist/index.js');
   console.log('✅ Server routes loaded from dist/index.js');
 } catch (error) {
   console.error('⚠️ Could not load server routes:', error.message);
 }
 
-// API Routes protette (fallback se l'import non funziona)
-app.get('/api/appointments', (req, res) => {
-  res.status(503).json({ error: 'Service temporarily unavailable' });
-});
-
-app.post('/api/appointments', (req, res) => {
-  res.status(503).json({ error: 'Service temporarily unavailable' });
-});
-
-app.get('/api/reminder', (req, res) => {
-  res.status(401).json({ error: 'Unauthorized' });
-});
-
-app.post('/api/reminder', (req, res) => {
-  res.status(401).json({ error: 'Unauthorized' });
-});
+// RIMUOVI LE API FALLBACK - le API vere sono nel dist/index.js importato sopra
+// Se l'import funziona, queste non verranno mai chiamate
 
 // Serve static files - prova multipli path
 let distPath;
@@ -180,10 +177,18 @@ if (!distPath) {
     `);
   });
 } else {
+  // Serve static assets (CSS, JS, immagini)
+  app.use('/assets', express.static(path.join(distPath, 'assets')));
   app.use(express.static(distPath));
 
-  // SPA fallback
+  // SPA fallback - con controllo auth finale
   app.get('*', (req, res) => {
+    // Controllo finale prima di servire index.html
+    if (!isAuthenticated(req)) {
+      console.log(`🚫 SPA fallback: redirect a /login da ${req.path}`);
+      return res.redirect('/login');
+    }
+    
     const indexFile = path.join(distPath, 'index.html');
     if (fs.existsSync(indexFile)) {
       res.sendFile(indexFile);
