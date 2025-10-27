@@ -126,6 +126,8 @@
     <div id="root"></div>
     
     <script>
+      console.log('🚀 Script caricato');
+      
       // Controllo autenticazione
       function getCookie(name) {
         const value = `; ${document.cookie}`;
@@ -133,15 +135,18 @@
         if (parts.length === 2) return parts.pop().split(';').shift();
       }
       
-      const isAuthenticated = !!getCookie('auth_token');
+      const authToken = getCookie('auth_token');
+      console.log('🍪 Cookie auth_token:', authToken ? 'presente' : 'assente');
+      console.log('🍪 Tutti i cookie:', document.cookie);
+      
+      const isAuthenticated = !!authToken;
       
       if (!isAuthenticated) {
-        // Mostra login
+        console.log('❌ Non autenticato - mostro login');
         document.getElementById('login-page').classList.add('active');
       } else {
-        // Mostra app React
+        console.log('✅ Autenticato - carico app React');
         document.getElementById('root').classList.add('active');
-        // Carica il bundle React
         const script = document.createElement('script');
         script.type = 'module';
         script.src = '/src/main.tsx';
@@ -153,32 +158,47 @@
       if (loginForm) {
         loginForm.addEventListener('submit', async (e) => {
           e.preventDefault();
+          console.log('📝 Form submit');
           
           const passwordInput = document.getElementById('password');
           const loginBtn = document.getElementById('loginBtn');
           const errorDiv = document.getElementById('error');
           const password = passwordInput.value;
           
-          // Disabilita form durante il login
+          console.log('🔑 Password lunghezza:', password.length);
+          
           loginBtn.disabled = true;
           loginBtn.textContent = 'Accesso in corso...';
           errorDiv.classList.remove('show');
           
           try {
+            console.log('📡 Invio richiesta a /api/login');
+            
             const response = await fetch('/api/login', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+              },
               body: JSON.stringify({ password }),
               credentials: 'include'
             });
             
+            console.log('📬 Risposta ricevuta:', response.status, response.statusText);
+            console.log('🍪 Set-Cookie header:', response.headers.get('set-cookie'));
+            
             const data = await response.json();
+            console.log('📦 Data:', data);
             
             if (response.ok && data.success) {
-              // Login riuscito - ricarica la pagina
-              window.location.reload();
+              console.log('✅ Login riuscito - ricarico pagina');
+              
+              // Aspetta un attimo prima di ricaricare
+              setTimeout(() => {
+                window.location.reload();
+              }, 500);
             } else {
-              // Password errata
+              console.log('❌ Login fallito');
               errorDiv.classList.add('show');
               passwordInput.value = '';
               passwordInput.focus();
@@ -186,8 +206,8 @@
               loginBtn.textContent = 'Entra';
             }
           } catch (error) {
-            console.error('Login error:', error);
-            errorDiv.textContent = '❌ Errore di connessione. Riprova.';
+            console.error('💥 Errore catch:', error);
+            errorDiv.textContent = '❌ Errore: ' + error.message;
             errorDiv.classList.add('show');
             loginBtn.disabled = false;
             loginBtn.textContent = 'Entra';
