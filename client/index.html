@@ -125,6 +125,9 @@
     <!-- App React -->
     <div id="root"></div>
     
+    <!-- Vite injetta automaticamente lo script in produzione -->
+    <script type="module" src="/src/main.tsx"></script>
+    
     <script>
       console.log('🚀 Script caricato');
       
@@ -143,14 +146,14 @@
       
       if (!isAuthenticated) {
         console.log('❌ Non autenticato - mostro login');
+        // Nascondi root e mostra login
+        document.getElementById('root').style.display = 'none';
         document.getElementById('login-page').classList.add('active');
       } else {
-        console.log('✅ Autenticato - carico app React');
+        console.log('✅ Autenticato - mostro app');
+        // Mostra root e nascondi login
         document.getElementById('root').classList.add('active');
-        const script = document.createElement('script');
-        script.type = 'module';
-        script.src = '/src/main.tsx';
-        document.body.appendChild(script);
+        document.getElementById('login-page').style.display = 'none';
       }
       
       // Gestione form login
@@ -158,45 +161,31 @@
       if (loginForm) {
         loginForm.addEventListener('submit', async (e) => {
           e.preventDefault();
-          console.log('📝 Form submit');
           
           const passwordInput = document.getElementById('password');
           const loginBtn = document.getElementById('loginBtn');
           const errorDiv = document.getElementById('error');
           const password = passwordInput.value;
           
-          console.log('🔑 Password lunghezza:', password.length);
-          
           loginBtn.disabled = true;
           loginBtn.textContent = 'Accesso in corso...';
           errorDiv.classList.remove('show');
           
           try {
-            console.log('📡 Invio richiesta a /api/login');
-            
             const response = await fetch('/api/login', {
               method: 'POST',
               headers: { 
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
+                'Content-Type': 'application/json'
               },
               body: JSON.stringify({ password }),
               credentials: 'include'
             });
             
-            console.log('📬 Risposta ricevuta:', response.status, response.statusText);
-            console.log('🍪 Set-Cookie header:', response.headers.get('set-cookie'));
-            
             const data = await response.json();
-            console.log('📦 Data:', data);
             
             if (response.ok && data.success) {
               console.log('✅ Login riuscito - ricarico pagina');
-              
-              // Aspetta un attimo prima di ricaricare
-              setTimeout(() => {
-                window.location.reload();
-              }, 500);
+              window.location.reload();
             } else {
               console.log('❌ Login fallito');
               errorDiv.classList.add('show');
@@ -206,7 +195,7 @@
               loginBtn.textContent = 'Entra';
             }
           } catch (error) {
-            console.error('💥 Errore catch:', error);
+            console.error('💥 Errore:', error);
             errorDiv.textContent = '❌ Errore: ' + error.message;
             errorDiv.classList.add('show');
             loginBtn.disabled = false;
