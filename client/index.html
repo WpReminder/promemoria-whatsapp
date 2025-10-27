@@ -59,7 +59,7 @@
       
       .login-card input:focus {
         outline: none;
-        border-color: black;
+        border-color: #000;
       }
       
       .login-card button {
@@ -67,7 +67,7 @@
         padding: 0.875rem;
         font-size: 1rem;
         font-weight: 600;
-        background-color: black;
+        background-color: #000;
         color: white;
         border: none;
         border-radius: 0.5rem;
@@ -100,22 +100,9 @@
       /* Nascondi root finché non autenticato */
       #root { display: none; }
       #root.active { display: block; }
-      
-      /* Loading spinner */
-      .loading {
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        color: black;
-        font-size: 1.2rem;
-      }
     </style>
   </head>
   <body>
-    <!-- Loading -->
-    <div class="loading" id="loading">🔄 Caricamento...</div>
-
     <!-- Pagina di Login -->
     <div id="login-page">
       <div class="login-card">
@@ -137,41 +124,36 @@
     <!-- App React -->
     <div id="root"></div>
     
+    <!-- Vite injetta automaticamente lo script in produzione -->
     <script type="module" src="/src/main.tsx"></script>
     
     <script>
-      console.log('🚀 Controllo autenticazione...');
+      console.log('🚀 Script caricato');
       
-      // Controlla autenticazione tramite API
-      async function checkAuth() {
-        try {
-          const response = await fetch('/api/check-auth', {
-            method: 'GET',
-            credentials: 'include'
-          });
-          
-          const data = await response.json();
-          
-          document.getElementById('loading').style.display = 'none';
-          
-          if (data.authenticated) {
-            console.log('✅ Autenticato');
-            document.getElementById('root').classList.add('active');
-            document.getElementById('login-page').style.display = 'none';
-          } else {
-            console.log('❌ Non autenticato');
-            document.getElementById('root').style.display = 'none';
-            document.getElementById('login-page').classList.add('active');
-          }
-        } catch (error) {
-          console.error('💥 Errore controllo auth:', error);
-          document.getElementById('loading').style.display = 'none';
-          document.getElementById('login-page').classList.add('active');
-        }
+      // Controllo autenticazione
+      function getCookie(name) {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop().split(';').shift();
       }
       
-      // Esegui controllo all'avvio
-      checkAuth();
+      const authToken = getCookie('auth_token');
+      console.log('🍪 Cookie auth_token:', authToken ? 'presente' : 'assente');
+      console.log('🍪 Tutti i cookie:', document.cookie);
+      
+      const isAuthenticated = !!authToken;
+      
+      if (!isAuthenticated) {
+        console.log('❌ Non autenticato - mostro login');
+        // Nascondi root e mostra login
+        document.getElementById('root').style.display = 'none';
+        document.getElementById('login-page').classList.add('active');
+      } else {
+        console.log('✅ Autenticato - mostro app');
+        // Mostra root e nascondi login
+        document.getElementById('root').classList.add('active');
+        document.getElementById('login-page').style.display = 'none';
+      }
       
       // Gestione form login
       const loginForm = document.getElementById('loginForm');

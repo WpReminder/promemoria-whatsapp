@@ -3,14 +3,11 @@
  */
 
 export default async function handler(req, res) {
-  // CORS headers
-  const origin = req.headers.origin || 'https://promemoria-whatsapp.vercel.app';
-  res.setHeader('Access-Control-Allow-Origin', origin);
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-
   if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
     return res.status(200).end();
   }
 
@@ -21,20 +18,26 @@ export default async function handler(req, res) {
   const { password } = req.body;
   const masterPassword = process.env.APP_PASSWORD;
 
+  console.log('🔐 Login request received');
+
   if (!masterPassword) {
     console.warn("⚠️ APP_PASSWORD non impostata");
     return res.status(500).json({ error: 'Server configuration error' });
   }
 
   if (password === masterPassword) {
-    // Cookie SICURO con HttpOnly e Secure
-    res.setHeader('Set-Cookie', 
-      `auth_token=${masterPassword}; HttpOnly; Secure; Path=/; Max-Age=${30 * 24 * 60 * 60}; SameSite=Lax`
-    );
+    console.log('✅ Password corretta');
     
-    return res.status(200).json({ success: true });
+    // Prova cookie MOLTO semplice
+    res.setHeader('Set-Cookie', `auth_token=${masterPassword}; Path=/; Max-Age=2592000`);
+    
+    return res.status(200).json({ 
+      success: true,
+      message: 'Cookie should be set',
+      cookieValue: `auth_token=${masterPassword}`
+    });
   } else {
-    console.warn('❌ Tentativo di login fallito');
+    console.warn('❌ Password errata');
     return res.status(401).json({ error: 'Invalid password' });
   }
 }
