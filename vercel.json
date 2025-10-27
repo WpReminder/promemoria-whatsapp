@@ -2,15 +2,13 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist/public",
   "installCommand": "npm install",
-  "framework": null,
   "rewrites": [
-    { "source": "/assets/:path*", "destination": "/assets/:path*" },
-    { "source": "/:path*", "destination": "/api/server" }
+    { "source": "/api/login", "destination": "/api/login" },
+    { "source": "/api/appointments", "destination": "/api/appointments" },
+    { "source": "/api/reminder", "destination": "/api/reminder" }
   ],
-  "routes": [
-    {
-      "src": "/api/server",
-      "dest": "/api/server"
-    }
-  ]
+  "crons": [{
+    "path": "/api/reminder",
+    "schedule": "0 * * * *"
+  }]
 }

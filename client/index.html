@@ -9,9 +9,191 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+      body { margin: 0; padding: 0; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+      
+      /* Pagina di login */
+      #login-page { display: none; }
+      #login-page.active { display: grid; }
+      
+      #login-page {
+        place-items: center;
+        min-height: 100vh;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 9999;
+      }
+      
+      .login-card {
+        background: white;
+        padding: 2.5rem;
+        border-radius: 1rem;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        width: 90%;
+        max-width: 400px;
+      }
+      
+      .login-card h1 {
+        text-align: center;
+        color: #1a202c;
+        margin: 0 0 2rem 0;
+        font-size: 1.75rem;
+        font-weight: 600;
+      }
+      
+      .login-card input {
+        width: 100%;
+        padding: 0.875rem;
+        font-size: 1rem;
+        border: 2px solid #e2e8f0;
+        border-radius: 0.5rem;
+        margin-bottom: 1rem;
+        box-sizing: border-box;
+        font-family: inherit;
+        transition: border-color 0.2s;
+      }
+      
+      .login-card input:focus {
+        outline: none;
+        border-color: #667eea;
+      }
+      
+      .login-card button {
+        width: 100%;
+        padding: 0.875rem;
+        font-size: 1rem;
+        font-weight: 600;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        border-radius: 0.5rem;
+        cursor: pointer;
+        font-family: inherit;
+        transition: opacity 0.2s;
+      }
+      
+      .login-card button:hover {
+        opacity: 0.9;
+      }
+      
+      .login-card button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+      
+      .error {
+        color: #e53e3e;
+        text-align: center;
+        margin-top: 1rem;
+        font-size: 0.875rem;
+        display: none;
+      }
+      
+      .error.show {
+        display: block;
+      }
+      
+      /* Nascondi root finché non autenticato */
+      #root { display: none; }
+      #root.active { display: block; }
+    </style>
   </head>
   <body>
+    <!-- Pagina di Login -->
+    <div id="login-page">
+      <div class="login-card">
+        <h1>🔒 Accesso Riservato</h1>
+        <form id="loginForm">
+          <input 
+            type="password" 
+            id="password" 
+            placeholder="Inserisci la password" 
+            required 
+            autofocus 
+          />
+          <button type="submit" id="loginBtn">Entra</button>
+          <div class="error" id="error">❌ Password errata. Riprova.</div>
+        </form>
+      </div>
+    </div>
+
+    <!-- App React -->
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    
+    <script>
+      // Controllo autenticazione
+      function getCookie(name) {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop().split(';').shift();
+      }
+      
+      const isAuthenticated = !!getCookie('auth_token');
+      
+      if (!isAuthenticated) {
+        // Mostra login
+        document.getElementById('login-page').classList.add('active');
+      } else {
+        // Mostra app React
+        document.getElementById('root').classList.add('active');
+        // Carica il bundle React
+        const script = document.createElement('script');
+        script.type = 'module';
+        script.src = '/src/main.tsx';
+        document.body.appendChild(script);
+      }
+      
+      // Gestione form login
+      const loginForm = document.getElementById('loginForm');
+      if (loginForm) {
+        loginForm.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          
+          const passwordInput = document.getElementById('password');
+          const loginBtn = document.getElementById('loginBtn');
+          const errorDiv = document.getElementById('error');
+          const password = passwordInput.value;
+          
+          // Disabilita form durante il login
+          loginBtn.disabled = true;
+          loginBtn.textContent = 'Accesso in corso...';
+          errorDiv.classList.remove('show');
+          
+          try {
+            const response = await fetch('/api/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ password }),
+              credentials: 'include'
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok && data.success) {
+              // Login riuscito - ricarica la pagina
+              window.location.reload();
+            } else {
+              // Password errata
+              errorDiv.classList.add('show');
+              passwordInput.value = '';
+              passwordInput.focus();
+              loginBtn.disabled = false;
+              loginBtn.textContent = 'Entra';
+            }
+          } catch (error) {
+            console.error('Login error:', error);
+            errorDiv.textContent = '❌ Errore di connessione. Riprova.';
+            errorDiv.classList.add('show');
+            loginBtn.disabled = false;
+            loginBtn.textContent = 'Entra';
+          }
+        });
+      }
+    </script>
   </body>
 </html>
