@@ -3,7 +3,7 @@ import path from "path";
 import fs from "fs";
 import { registerRoutes } from "./routes";
 import { setupVite, log } from "./vite";
-import cookieParser from 'cookie-parser'; // NUOVO: Importa cookie-parser
+import cookieParser from 'cookie-parser'; // Importa cookie-parser
 
 const app = express();
 
@@ -12,76 +12,83 @@ app.use(express.json({
 }));
 app.use(express.urlencoded({ extended: false }));
 
-// --- NUOVO: SEZIONE AUTENTICAZIONE (GATE) ---
+// --- SEZIONE AUTENTICAZIONE (GATE) ---
 
 // 1. Usa il middleware per leggere i cookie
 app.use(cookieParser());
 
 // 2. Pagina di Login (HTML semplice)
 const loginHtml = `
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: grid; place-items: center; min-height: 100vh; background-color: #f4f4f5; color: #18181b; }
-    form { background: #ffffff; padding: 2rem; border-radius: 0.5rem; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-    h2 { font-size: 1.5rem; margin-bottom: 1.5rem; text-align: center; }
-    input { display: block; width: 300px; padding: 0.75rem; font-size: 1rem; border: 1px solid #d4d4d8; border-radius: 0.25rem; margin-bottom: 1rem;}
-    button { width: 100%; padding: 0.75rem; font-size: 1rem; background: #22c55e; color: white; border: none; border-radius: 0.25rem; margin-top: 0.5rem; cursor: pointer; transition: background 0.2s; }
-    button:hover { background: #16a34a; }
-  </style>
-  <form action="/api/login" method="POST">
-    <h2>Accesso Riservato</h2>
-    <input type="password" name="password" placeholder="Inserisci la password" required />
-    <button type="submit">Entra</button>
-  </form>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: grid; place-items: center; min-height: 100vh; background-color: #f4f4f5; color: #18181b; }
+    form { background: #ffffff; padding: 2rem; border-radius: 0.5rem; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+    h2 { font-size: 1.5rem; margin-bottom: 1.5rem; text-align: center; }
+    input { display: block; width: 300px; padding: 0.75rem; font-size: 1rem; border: 1px solid #d4d4d8; border-radius: 0.25rem; margin-bottom: 1rem;}
+    button { width: 100%; padding: 0.75rem; font-size: 1rem; background: #22c55e; color: white; border: none; border-radius: 0.25rem; margin-top: 0.5rem; cursor: pointer; transition: background 0.2s; }
+    button:hover { background: #16a34a; }
+  </style>
+  <form action="/api/login" method="POST">
+    <h2>Accesso Riservato</h2>
+    <input type="password" name="password" placeholder="Inserisci la password" required />
+    <button type="submit">Entra</button>
+  </form>
 `;
 app.get('/login', (_req, res) => {
-  res.status(401).send(loginHtml);
+  res.status(401).send(loginHtml);
 });
 
-// 3. Middleware "Buttafuori"
-// Controlla *ogni* richiesta prima che raggiunga le rotte API o i file statici.
+// 3. Middleware "Buttafuori" GLOBALE
+// Controlla *ogni* richiesta PRIMA che raggiunga i file statici e le API protette.
 app.use((req, res, next) => {
-  const masterPassword = process.env.APP_PASSWORD;
-  const cronSecret = process.env.CRON_SECRET; 
+  const masterPassword = process.env.APP_PASSWORD;
+  const cronSecret = process.env.CRON_SECRET; 
 
-  // Se APP_PASSWORD non è impostata, l'ambiente non è protetto.
-  if (!masterPassword) {
-    console.warn("ATTENZIONE: Variabile APP_PASSWORD non impostata. Accesso libero.");
-    return next();
-  }
+  // Se APP_PASSWORD non è impostata, l'ambiente non è protetto.
+  if (!masterPassword) {
+    console.warn("ATTENZIONE: Variabile APP_PASSWORD non impostata. Accesso libero.");
+    return next();
+  }
 
-  // Check 1: L'utente ha un cookie di login valido (Autenticazione Umano)?
-  const authToken = req.cookies.auth_token;
-  const hasValidCookie = (authToken === masterPassword);
+  // Check 1: L'utente ha un cookie di login valido (Autenticazione Umano)?
+  const authToken = req.cookies.auth_token;
+  const hasValidCookie = (authToken === masterPassword);
 
-  // Check 2: Il servizio esterno ha un token API valido (Autenticazione Macchina)?
-  const authHeader = req.headers.authorization;
-  let hasValidCronSecret = false;
-  if (cronSecret && authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.split(' ')[1]; 
-    if (token === cronSecret) {
-      hasValidCronSecret = true;
+  // Check 2: Il servizio esterno ha un token API valido (Autenticazione Macchina)?
+  const authHeader = req.headers.authorization;
+  let hasValidCronSecret = false;
+  if (cronSecret && authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1]; 
+    if (token === cronSecret) {
+      hasValidCronSecret = true;
+    }
+  }
+
+  // Check 3: L'utente sta cercando di accedere alle pagine pubbliche (login)?
+  const isPublicPath = (
+    req.path === '/login' || 
+    req.path === '/api/login' ||
+    req.path === '/favicon.ico'
+  );
+
+  // DECISIONE FINALE: Lascia passare se è loggato, è un cron job, o sta accedendo a una pagina pubblica.
+  if (
+    hasValidCookie ||      
+    hasValidCronSecret ||   
+    isPublicPath            
+  ) {
+    next(); 
+  } else {
+    // --- LOGICA DI BLOCCO AGGIORNATA ---
+    
+    // Se la richiesta è per un endpoint API, rispondiamo con 401 JSON
+    if (req.path.startsWith('/api/')) {
+      return res.status(401).json({ error: "Unauthorized" });
     }
-  }
 
-  // Check 3: L'utente sta cercando di accedere alle pagine pubbliche (login)?
-  // Includiamo anche il favicon.ico come pubblico per evitare reindirizzamenti inutili.
-  const isPublicPath = (
-    req.path === '/login' || 
-    req.path === '/api/login' ||
-    req.path === '/favicon.ico'
-  );
-
-  // DECISIONE FINALE: Lascia passare se è loggato, è un cron job, o sta accedendo a una pagina pubblica.
-  if (
-    hasValidCookie ||      
-    hasValidCronSecret ||   
-    isPublicPath            
-  ) {
-    next(); 
-  } else {
-    // Blocca e reindirizza alla pagina di login
-    res.redirect('/login');
-  }
+    // Altrimenti, è una richiesta per il frontend/asset: reindirizza al login
+    res.redirect('/login');
+    // --- FINE LOGICA DI BLOCCO ---
+  }
 });
 // --- FINE SEZIONE AUTENTICAZIONE ---
 
@@ -115,9 +122,9 @@ app.use((req, res, next) => {
     res.status(status).json({ message });
   });
 
-  // Nota: questa logica di servire i file statici con app.use(express.static(distPath));
-  // è ora protetta dal middleware di autenticazione che si trova sopra!
-
+// ====================================================================
+// IL SERVIZIO DI VITE/STATIC (FRONTEND) DEVE ESSERE DOPO L'AUTENTICAZIONE
+// ====================================================================
   if (process.env.NODE_ENV === "development") {
     await setupVite(app, server);
   } else {
@@ -146,5 +153,3 @@ app.use((req, res, next) => {
     log(`✅ Server running on port ${port}`);
   });
 })();
-
-    
