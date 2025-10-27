@@ -3,18 +3,50 @@
  * 
  * This file is specifically for Vercel deployment.
  * It handles both GET (fetch appointments) and POST (create appointment) requests.
+ * 
+ * PROTECTED: Requires authentication via cookie
  */
 
 import { Pool } from '@neondatabase/serverless';
+
+// Funzione di controllo autenticazione
+function isAuthenticated(req) {
+  const masterPassword = process.env.APP_PASSWORD;
+
+  if (!masterPassword) {
+    console.warn("⚠️ APP_PASSWORD non impostata. Accesso libero.");
+    return true;
+  }
+
+  // Check cookie utente
+  const cookies = req.headers.cookie || '';
+  const authToken = cookies.split(';')
+    .map(c => c.trim())
+    .find(c => c.startsWith('auth_token='))
+    ?.split('=')[1];
+
+  if (authToken === masterPassword) {
+    return true;
+  }
+
+  return false;
+}
 
 export default async function handler(req, res) {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
+  }
+
+  // 🔒 CONTROLLO AUTENTICAZIONE
+  if (!isAuthenticated(req)) {
+    console.log('🚫 Unauthorized access to /api/appointments');
+    return res.status(401).json({ error: 'Unauthorized' });
   }
 
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
