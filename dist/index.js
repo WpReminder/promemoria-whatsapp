@@ -362,19 +362,19 @@ app.use(express2.json({
 app.use(express2.urlencoded({ extended: false }));
 app.use(cookieParser());
 var loginHtml = `
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: grid; place-items: center; min-height: 100vh; background-color: #f4f4f5; color: #18181b; }
-    form { background: #ffffff; padding: 2rem; border-radius: 0.5rem; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-    h2 { font-size: 1.5rem; margin-bottom: 1.5rem; text-align: center; }
-    input { display: block; width: 300px; padding: 0.75rem; font-size: 1rem; border: 1px solid #d4d4d8; border-radius: 0.25rem; margin-bottom: 1rem;}
-    button { width: 100%; padding: 0.75rem; font-size: 1rem; background: #22c55e; color: white; border: none; border-radius: 0.25rem; margin-top: 0.5rem; cursor: pointer; transition: background 0.2s; }
-    button:hover { background: #16a34a; }
-  </style>
-  <form action="/api/login" method="POST">
-    <h2>Accesso Riservato</h2>
-    <input type="password" name="password" placeholder="Inserisci la password" required />
-    <button type="submit">Entra</button>
-  </form>
+\xA0 <style>
+\xA0 \xA0 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: grid; place-items: center; min-height: 100vh; background-color: #f4f4f5; color: #18181b; }
+\xA0 \xA0 form { background: #ffffff; padding: 2rem; border-radius: 0.5rem; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+\xA0 \xA0 h2 { font-size: 1.5rem; margin-bottom: 1.5rem; text-align: center; }
+\xA0 \xA0 input { display: block; width: 300px; padding: 0.75rem; font-size: 1rem; border: 1px solid #d4d4d8; border-radius: 0.25rem; margin-bottom: 1rem;}
+\xA0 \xA0 button { width: 100%; padding: 0.75rem; font-size: 1rem; background: #22c55e; color: white; border: none; border-radius: 0.25rem; margin-top: 0.5rem; cursor: pointer; transition: background 0.2s; }
+\xA0 \xA0 button:hover { background: #16a34a; }
+\xA0 </style>
+\xA0 <form action="/api/login" method="POST">
+\xA0 \xA0 <h2>Accesso Riservato</h2>
+\xA0 \xA0 <input type="password" name="password" placeholder="Inserisci la password" required />
+\xA0 \xA0 <button type="submit">Entra</button>
+\xA0 </form>
 `;
 app.get("/login", (_req, res) => {
   res.status(401).send(loginHtml);
@@ -400,6 +400,9 @@ app.use((req, res, next) => {
   if (hasValidCookie || hasValidCronSecret || isPublicPath) {
     next();
   } else {
+    if (req.path.startsWith("/api/")) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
     res.redirect("/login");
   }
 });
