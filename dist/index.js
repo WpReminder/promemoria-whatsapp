@@ -438,14 +438,16 @@ app.use((req, res, next) => {
     console.log("\u{1F4C2} CERCO I FILE QUI:", distPath);
     console.log("\u{1F4C4} index.html ESISTE?", fs2.existsSync(path3.join(distPath, "index.html")));
     app.use(express2.static(distPath));
-    app.get("*", (_req, res) => {
+    const sendIndexFile = (_req, res) => {
       const indexFile = path3.join(distPath, "index.html");
       if (!fs2.existsSync(indexFile)) {
         console.error("\u274C index.html non trovato in:", indexFile);
         return res.status(500).send("index.html non trovato");
       }
       res.sendFile(indexFile);
-    });
+    };
+    app.get("/", sendIndexFile);
+    app.get("*", sendIndexFile);
   }
   const port = process.env.PORT || 5e3;
   server.listen(port, () => {

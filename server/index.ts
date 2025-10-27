@@ -128,24 +128,32 @@ app.use((req, res, next) => {
   if (process.env.NODE_ENV === "development") {
     await setupVite(app, server);
   } else {
-    // Usa sempre la root assoluta del progetto (importante su Vercel)
+    // --- INIZIO BLOCCO MODIFICATO ---
+    
     const distPath = path.join(process.cwd(), "dist", "public");
     console.log("📂 CERCO I FILE QUI:", distPath);
     console.log("📄 index.html ESISTE?", fs.existsSync(path.join(distPath, "index.html")));
 
-
-    // Serve static files
+    // 1. Serve i file statici (CSS, JS, assets)
     app.use(express.static(distPath));
 
-    // Catch-all per React Router / SPA
-    app.get("*", (_req, res) => {
+    // 2. Serviamo ESPLICITAMENTE la pagina principale (index.html) per la root e per le rotte SPA
+    const sendIndexFile = (_req: Request, res: Response) => {
       const indexFile = path.join(distPath, "index.html");
       if (!fs.existsSync(indexFile)) {
         console.error("❌ index.html non trovato in:", indexFile);
         return res.status(500).send("index.html non trovato");
       }
       res.sendFile(indexFile);
-    });
+    };
+    
+    // Serve la root esplicitamente (questo è il punto critico)
+    app.get("/", sendIndexFile); 
+
+    // Catch-all per tutte le altre rotte SPA (es. /appointments, /settings)
+    app.get("*", sendIndexFile); 
+
+    // --- FINE BLOCCO MODIFICATO ---
   }
 
   const port = process.env.PORT || 5000;
