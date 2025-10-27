@@ -1,0 +1,8 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist/public",
+  "rewrites": [
+    { "source": "/api/appointments", "destination": "/api/appointments.js" },
+    { "source": "/api/reminder", "destination": "/api/reminder.js" }
+  ]
+}
