@@ -4,7 +4,7 @@
 
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Origin', 'https://promemoria-whatsapp.vercel.app');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -29,7 +29,7 @@ export default async function handler(req, res) {
     console.log('✅ Password corretta');
     
     // Prova cookie MOLTO semplice
-    res.setHeader('Set-Cookie', `auth_token=${masterPassword}; Path=/; Max-Age=2592000`);
+    res.setHeader('Set-Cookie', `auth_token=${masterPassword}; Path=/; Max-Age=315360000`);
     
     return res.status(200).json({ 
       success: true,
