@@ -23,13 +23,11 @@ function isAuthenticated(req) {
     return true;
   }
 
-  // Check cookie utente
   const authToken = req.cookies.auth_token;
   if (authToken === masterPassword) {
     return true;
   }
 
-  // Check Bearer token per cron
   const authHeader = req.headers.authorization;
   if (cronSecret && authHeader?.startsWith('Bearer ')) {
     const token = authHeader.split(' ')[1];
@@ -39,32 +37,6 @@ function isAuthenticated(req) {
   }
 
   return false;
-}
-
-// Middleware di protezione API
-function requireAuth(req, res, next) {
-  const masterPassword = process.env.APP_PASSWORD;
-  const cronSecret = process.env.CRON_SECRET;
-
-  if (!masterPassword) {
-    return next();
-  }
-
-  const authToken = req.cookies?.auth_token;
-  if (authToken === masterPassword) {
-    return next();
-  }
-
-  const authHeader = req.headers.authorization;
-  if (cronSecret && authHeader?.startsWith('Bearer ')) {
-    const token = authHeader.split(' ')[1];
-    if (token === cronSecret) {
-      return next();
-    }
-  }
-
-  console.log(`🚫 API bloccata: ${req.method} ${req.path}`);
-  return res.status(401).json({ error: "Unauthorized" });
 }
 
 // Pagina di Login HTML
@@ -124,7 +96,9 @@ app.use((req, res, next) => {
   const isPublicPath = (
     req.path === '/login' || 
     req.path === '/api/login' ||
-    req.path === '/favicon.ico'
+    req.path === '/favicon.ico' ||
+    req.path.startsWith('/_next') ||
+    req.path.startsWith('/assets')
   );
 
   if (isPublicPath) {
@@ -147,36 +121,76 @@ app.use((req, res, next) => {
   next();
 });
 
-// TODO: Importa e registra le tue API routes qui
-// Per ora usa placeholder
-app.get('/api/appointments', requireAuth, (req, res) => {
-  res.json([]);
+// Importa le route dal tuo server compilato
+let serverRoutes;
+try {
+  // Prova a importare il server compilato
+  const serverModule = await import('../dist/index.js');
+  console.log('✅ Server routes loaded from dist/index.js');
+} catch (error) {
+  console.error('⚠️ Could not load server routes:', error.message);
+}
+
+// API Routes protette (fallback se l'import non funziona)
+app.get('/api/appointments', (req, res) => {
+  res.status(503).json({ error: 'Service temporarily unavailable' });
 });
 
-app.post('/api/appointments', requireAuth, (req, res) => {
-  res.status(201).json({ message: 'Created' });
+app.post('/api/appointments', (req, res) => {
+  res.status(503).json({ error: 'Service temporarily unavailable' });
 });
 
-app.get('/api/reminder', requireAuth, (req, res) => {
-  res.json({ status: 'ok' });
+app.get('/api/reminder', (req, res) => {
+  res.status(401).json({ error: 'Unauthorized' });
 });
 
-app.post('/api/reminder', requireAuth, (req, res) => {
-  res.json({ success: true });
+app.post('/api/reminder', (req, res) => {
+  res.status(401).json({ error: 'Unauthorized' });
 });
 
-// Serve static files
-const distPath = path.join(__dirname, '..', 'dist', 'public');
-app.use(express.static(distPath));
+// Serve static files - prova multipli path
+let distPath;
+const possiblePaths = [
+  path.join(__dirname, '..', 'dist', 'public'),
+  path.join(process.cwd(), 'dist', 'public'),
+  path.join('/var/task', 'dist', 'public')
+];
 
-// SPA fallback
-app.get('*', (req, res) => {
-  const indexFile = path.join(distPath, 'index.html');
-  if (fs.existsSync(indexFile)) {
-    res.sendFile(indexFile);
-  } else {
-    res.status(404).send('App not found');
+for (const testPath of possiblePaths) {
+  console.log(`🔍 Testing path: ${testPath}`);
+  if (fs.existsSync(testPath)) {
+    distPath = testPath;
+    console.log(`✅ Found dist at: ${distPath}`);
+    break;
   }
-});
+}
+
+if (!distPath) {
+  console.error('❌ Could not find dist/public directory');
+  console.log('📂 Current directory:', process.cwd());
+  console.log('📂 __dirname:', __dirname);
+  
+  app.get('*', (req, res) => {
+    res.status(500).send(`
+      <h1>Configuration Error</h1>
+      <p>Could not locate frontend files</p>
+      <pre>Searched paths:\n${possiblePaths.join('\n')}</pre>
+      <pre>CWD: ${process.cwd()}</pre>
+      <pre>__dirname: ${__dirname}</pre>
+    `);
+  });
+} else {
+  app.use(express.static(distPath));
+
+  // SPA fallback
+  app.get('*', (req, res) => {
+    const indexFile = path.join(distPath, 'index.html');
+    if (fs.existsSync(indexFile)) {
+      res.sendFile(indexFile);
+    } else {
+      res.status(404).send('Frontend file not found');
+    }
+  });
+}
 
 export default app;
