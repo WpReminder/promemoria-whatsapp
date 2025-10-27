@@ -1,4 +1,10 @@
 var __defProp = Object.defineProperty;
+var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
+  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
+}) : x)(function(x) {
+  if (typeof require !== "undefined") return require.apply(this, arguments);
+  throw Error('Dynamic require of "' + x + '" is not supported');
+});
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
@@ -6,6 +12,8 @@ var __export = (target, all) => {
 
 // server/index.ts
 import express2 from "express";
+import path3 from "path";
+import fs2 from "fs";
 
 // server/routes.ts
 import { createServer } from "http";
@@ -185,6 +193,25 @@ function startReminderScheduler() {
 // server/routes.ts
 import { z as z2 } from "zod";
 async function registerRoutes(app2) {
+  app2.post("/api/login", (req, res) => {
+    const { password } = req.body;
+    const masterPassword = process.env.APP_PASSWORD;
+    if (password === masterPassword) {
+      res.cookie("auth_token", masterPassword, {
+        httpOnly: true,
+        // Impedisce l'accesso al cookie da JavaScript nel browser
+        secure: process.env.NODE_ENV !== "development",
+        // Usa solo HTTPS in produzione
+        maxAge: 30 * 24 * 60 * 60 * 1e3,
+        // Scadenza dopo 30 giorni
+        path: "/"
+      });
+      res.redirect("/");
+    } else {
+      console.warn("Tentativo di login fallito");
+      res.redirect("/login");
+    }
+  });
   app2.get("/api/appointments", async (_req, res) => {
     try {
       const appointments2 = await storage.getAllAppointments();
@@ -242,30 +269,23 @@ import { createServer as createViteServer, createLogger } from "vite";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
-import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+var isDev = process.env.NODE_ENV !== "production";
 var vite_config_default = defineConfig({
   plugins: [
     react(),
-    runtimeErrorOverlay(),
-    ...process.env.NODE_ENV !== "production" && process.env.REPL_ID !== void 0 ? [
-      await import("@replit/vite-plugin-cartographer").then(
-        (m) => m.cartographer()
-      ),
-      await import("@replit/vite-plugin-dev-banner").then(
-        (m) => m.devBanner()
-      )
-    ] : []
+    // Overlay di errori solo in sviluppo
+    ...isDev ? [__require("@replit/vite-plugin-runtime-error-modal")()] : []
   ],
   resolve: {
     alias: {
-      "@": path.resolve(import.meta.dirname, "client", "src"),
-      "@shared": path.resolve(import.meta.dirname, "shared"),
-      "@assets": path.resolve(import.meta.dirname, "attached_assets")
+      "@": path.resolve("client/src"),
+      "@shared": path.resolve("shared"),
+      "@assets": path.resolve("attached_assets")
     }
   },
-  root: path.resolve(import.meta.dirname, "client"),
+  root: path.resolve("client"),
   build: {
-    outDir: path.resolve(import.meta.dirname, "dist/public"),
+    outDir: path.resolve("dist/public"),
     emptyOutDir: true
   },
   server: {
@@ -330,20 +350,9 @@ async function setupVite(app2, server) {
     }
   });
 }
-function serveStatic(app2) {
-  const distPath = path2.resolve(import.meta.dirname, "public");
-  if (!fs.existsSync(distPath)) {
-    throw new Error(
-      `Could not find the build directory: ${distPath}, make sure to build the client first`
-    );
-  }
-  app2.use(express.static(distPath));
-  app2.use("*", (_req, res) => {
-    res.sendFile(path2.resolve(distPath, "index.html"));
-  });
-}
 
 // server/index.ts
+import cookieParser from "cookie-parser";
 var app = express2();
 app.use(express2.json({
   verify: (req, _res, buf) => {
@@ -351,26 +360,63 @@ app.use(express2.json({
   }
 }));
 app.use(express2.urlencoded({ extended: false }));
+app.use(cookieParser());
+var loginHtml = `
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: grid; place-items: center; min-height: 100vh; background-color: #f4f4f5; color: #18181b; }
+    form { background: #ffffff; padding: 2rem; border-radius: 0.5rem; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+    h2 { font-size: 1.5rem; margin-bottom: 1.5rem; text-align: center; }
+    input { display: block; width: 300px; padding: 0.75rem; font-size: 1rem; border: 1px solid #d4d4d8; border-radius: 0.25rem; margin-bottom: 1rem;}
+    button { width: 100%; padding: 0.75rem; font-size: 1rem; background: #22c55e; color: white; border: none; border-radius: 0.25rem; margin-top: 0.5rem; cursor: pointer; transition: background 0.2s; }
+    button:hover { background: #16a34a; }
+  </style>
+  <form action="/api/login" method="POST">
+    <h2>Accesso Riservato</h2>
+    <input type="password" name="password" placeholder="Inserisci la password" required />
+    <button type="submit">Entra</button>
+  </form>
+`;
+app.get("/login", (_req, res) => {
+  res.status(401).send(loginHtml);
+});
+app.use((req, res, next) => {
+  const masterPassword = process.env.APP_PASSWORD;
+  const cronSecret = process.env.CRON_SECRET;
+  if (!masterPassword) {
+    console.warn("ATTENZIONE: Variabile APP_PASSWORD non impostata. Accesso libero.");
+    return next();
+  }
+  const authToken = req.cookies.auth_token;
+  const hasValidCookie = authToken === masterPassword;
+  const authHeader = req.headers.authorization;
+  let hasValidCronSecret = false;
+  if (cronSecret && authHeader && authHeader.startsWith("Bearer ")) {
+    const token = authHeader.split(" ")[1];
+    if (token === cronSecret) {
+      hasValidCronSecret = true;
+    }
+  }
+  const isPublicPath = req.path === "/login" || req.path === "/api/login" || req.path === "/favicon.ico";
+  if (hasValidCookie || hasValidCronSecret || isPublicPath) {
+    next();
+  } else {
+    res.redirect("/login");
+  }
+});
 app.use((req, res, next) => {
   const start = Date.now();
-  const path3 = req.path;
-  let capturedJsonResponse = void 0;
+  const pathReq = req.path;
+  let capturedJsonResponse;
   const originalResJson = res.json;
   res.json = function(bodyJson, ...args) {
     capturedJsonResponse = bodyJson;
     return originalResJson.apply(res, [bodyJson, ...args]);
   };
   res.on("finish", () => {
-    const duration = Date.now() - start;
-    if (path3.startsWith("/api")) {
-      let logLine = `${req.method} ${path3} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "\u2026";
-      }
-      log(logLine);
+    if (pathReq.startsWith("/api")) {
+      let logLine = `${req.method} ${pathReq} ${res.statusCode} in ${Date.now() - start}ms`;
+      if (capturedJsonResponse) logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+      log(logLine.length > 80 ? logLine.slice(0, 79) + "\u2026" : logLine);
     }
   });
   next();
@@ -381,19 +427,25 @@ app.use((req, res, next) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
     res.status(status).json({ message });
-    throw err;
   });
-  if (app.get("env") === "development") {
+  if (process.env.NODE_ENV === "development") {
     await setupVite(app, server);
   } else {
-    serveStatic(app);
+    const distPath = path3.join(process.cwd(), "dist", "public");
+    console.log("\u{1F4C2} CERCO I FILE QUI:", distPath);
+    console.log("\u{1F4C4} index.html ESISTE?", fs2.existsSync(path3.join(distPath, "index.html")));
+    app.use(express2.static(distPath));
+    app.get("*", (_req, res) => {
+      const indexFile = path3.join(distPath, "index.html");
+      if (!fs2.existsSync(indexFile)) {
+        console.error("\u274C index.html non trovato in:", indexFile);
+        return res.status(500).send("index.html non trovato");
+      }
+      res.sendFile(indexFile);
+    });
   }
-  const port = parseInt(process.env.PORT || "5000", 10);
-  server.listen({
-    port,
-    host: "0.0.0.0",
-    reusePort: true
-  }, () => {
-    log(`serving on port ${port}`);
+  const port = process.env.PORT || 5e3;
+  server.listen(port, () => {
+    log(`\u2705 Server running on port ${port}`);
   });
 })();
