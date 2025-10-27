@@ -1,16 +1,8 @@
 /**
  * Vercel Serverless Function for Reminder Processing
  * 
- * This endpoint is called by Vercel Cron Jobs every hour.
+ * This endpoint is called by cron-job.org every hour.
  * It checks for appointments happening in the next hour and sends WhatsApp reminders.
- * 
- * IMPORTANT: Configure this in vercel.json:
- * {
- *   "crons": [{
- *     "path": "/api/reminder",
- *     "schedule": "0 * * * *"
- *   }]
- * }
  */
 
 import { Pool } from '@neondatabase/serverless';
@@ -59,20 +51,52 @@ async function sendWhatsAppMessage(phone, name, time) {
 }
 
 export default async function handler(req, res) {
-  // Verify request is from Vercel Cron or manual trigger
-  const authHeader = req.headers.authorization;
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    // Allow manual triggers without auth in development
-    if (process.env.NODE_ENV === 'production') {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
+  // CORS
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
   }
+
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  // AUTENTICAZIONE DOPPIA: Bearer token (cron-job.org) O Cookie (accesso manuale)
+  const authHeader = req.headers.authorization;
+  const expectedToken = `Bearer ${process.env.CRON_SECRET}`;
+  
+  // Controlla Bearer token
+  const isValidBearer = authHeader === expectedToken;
+  
+  // Controlla cookie
+  const cookies = req.headers.cookie || '';
+  const cookieToken = cookies
+    .split(';')
+    .find(c => c.trim().startsWith('auth_token='))
+    ?.split('=')[1];
+  const isValidCookie = cookieToken === process.env.APP_PASSWORD;
+
+  // Se NESSUNO dei due è valido → 401
+  if (!isValidBearer && !isValidCookie) {
+    console.warn('❌ Accesso non autorizzato a /api/reminder');
+    console.log('Auth header:', authHeader);
+    console.log('Expected token:', expectedToken);
+    console.log('Cookie token:', cookieToken);
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  console.log('✅ Autenticato via:', isValidBearer ? 'Bearer token (cron-job.org)' : 'Cookie (accesso manuale)');
 
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
   try {
     const now = new Date();
     const targetTime = new Date(now.getTime() + REMINDER_HOURS_BEFORE * 60 * 60 * 1000);
+
+    console.log(`🔍 Cerco appuntamenti tra ${now.toISOString()} e ${targetTime.toISOString()}`);
 
     // Find appointments in the time window that haven't been reminded
     const result = await pool.query(
@@ -84,6 +108,8 @@ export default async function handler(req, res) {
     );
 
     const appointments = result.rows;
+    console.log(`📅 Trovati ${appointments.length} appuntamenti da processare`);
+
     let sent = 0;
     let failed = 0;
 
@@ -93,6 +119,8 @@ export default async function handler(req, res) {
         hour: '2-digit', 
         minute: '2-digit' 
       });
+
+      console.log(`📤 Invio reminder a ${appointment.name} (${appointment.phone}) per ${time}`);
 
       const success = await sendWhatsAppMessage(
         appointment.phone,
@@ -105,21 +133,30 @@ export default async function handler(req, res) {
           'UPDATE appointments SET reminder_sent = true WHERE id = $1',
           [appointment.id]
         );
+        console.log(`✅ Reminder inviato con successo a ${appointment.name}`);
         sent++;
       } else {
+        console.error(`❌ Fallito invio a ${appointment.name}`);
         failed++;
       }
     }
+
+    console.log(`📊 Risultato: ${sent} inviati, ${failed} falliti su ${appointments.length} totali`);
 
     return res.status(200).json({
       success: true,
       message: `Processed ${appointments.length} reminders`,
       sent,
       failed,
+      appointments: appointments.map(a => ({
+        id: a.id,
+        name: a.name,
+        datetime: a.datetime
+      }))
     });
   } catch (error) {
-    console.error('Reminder processing error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    console.error('💥 Reminder processing error:', error);
+    return res.status(500).json({ error: 'Internal server error', details: error.message });
   } finally {
     await pool.end();
   }
