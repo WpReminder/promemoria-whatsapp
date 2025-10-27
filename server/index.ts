@@ -11,81 +11,100 @@ app.use(express.json({
   verify: (req, _res, buf) => { (req as any).rawBody = buf; }
 }));
 app.use(express.urlencoded({ extended: false }));
-
-// --- SEZIONE AUTENTICAZIONE (GATE) ---
-
-// 1. Usa il middleware per leggere i cookie
 app.use(cookieParser());
 
-// 2. Pagina di Login (HTML semplice)
-const loginHtml = `
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: grid; place-items: center; min-height: 100vh; background-color: #f4f4f5; color: #18181b; }
-    form { background: #ffffff; padding: 2rem; border-radius: 0.5rem; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-    h2 { font-size: 1.5rem; margin-bottom: 1.5rem; text-align: center; }
-    input { display: block; width: 300px; padding: 0.75rem; font-size: 1rem; border: 1px solid #d4d4d8; border-radius: 0.25rem; margin-bottom: 1rem;}
-    button { width: 100%; padding: 0.75rem; font-size: 1rem; background: #22c55e; color: white; border: none; border-radius: 0.25rem; margin-top: 0.5rem; cursor: pointer; transition: background 0.2s; }
-    button:hover { background: #16a34a; }
-  </style>
-  <form action="/api/login" method="POST">
-    <h2>Accesso Riservato</h2>
-    <input type="password" name="password" placeholder="Inserisci la password" required />
-    <button type="submit">Entra</button>
-  </form>
-`;
-
-// IMPORTANTE: Serve la pagina di login PRIMA del middleware di autenticazione
-app.get('/login', (_req, res) => {
-  res.status(401).send(loginHtml);
-});
-
-// 3. Middleware "Buttafuori" GLOBALE
-app.use((req, res, next) => {
+// Funzione di controllo autenticazione (ESPORTABILE)
+export function isAuthenticated(req: Request): boolean {
   const masterPassword = process.env.APP_PASSWORD;
-  const cronSecret = process.env.CRON_SECRET; 
+  const cronSecret = process.env.CRON_SECRET;
 
-  // Se APP_PASSWORD non è impostata, l'ambiente non è protetto.
   if (!masterPassword) {
-    console.warn("ATTENZIONE: Variabile APP_PASSWORD non impostata. Accesso libero.");
-    return next();
+    console.warn("⚠️ APP_PASSWORD non impostata. Accesso libero.");
+    return true;
   }
 
-  // Check 1: L'utente ha un cookie di login valido (Autenticazione Umano)?
+  // Check cookie utente
   const authToken = req.cookies.auth_token;
-  const hasValidCookie = (authToken === masterPassword);
+  if (authToken === masterPassword) {
+    return true;
+  }
 
-  // Check 2: Il servizio esterno ha un token API valido (Autenticazione Macchina)?
+  // Check Bearer token per cron
   const authHeader = req.headers.authorization;
-  let hasValidCronSecret = false;
-  if (cronSecret && authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.split(' ')[1]; 
+  if (cronSecret && authHeader?.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1];
     if (token === cronSecret) {
-      hasValidCronSecret = true;
+      return true;
     }
   }
 
-  // Check 3: L'utente sta cercando di accedere alle pagine pubbliche?
+  return false;
+}
+
+// Pagina di Login HTML
+const loginHtml = `
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login</title>
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: grid; place-items: center; min-height: 100vh; background-color: #f4f4f5; color: #18181b; margin: 0; }
+      form { background: #ffffff; padding: 2rem; border-radius: 0.5rem; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+      h2 { font-size: 1.5rem; margin-bottom: 1.5rem; text-align: center; }
+      input { display: block; width: 300px; padding: 0.75rem; font-size: 1rem; border: 1px solid #d4d4d8; border-radius: 0.25rem; margin-bottom: 1rem;}
+      button { width: 100%; padding: 0.75rem; font-size: 1rem; background: #22c55e; color: white; border: none; border-radius: 0.25rem; margin-top: 0.5rem; cursor: pointer; transition: background 0.2s; }
+      button:hover { background: #16a34a; }
+    </style>
+  </head>
+  <body>
+    <form action="/api/login" method="POST">
+      <h2>🔒 Accesso Riservato</h2>
+      <input type="password" name="password" placeholder="Inserisci la password" required autofocus />
+      <button type="submit">Entra</button>
+    </form>
+  </body>
+  </html>
+`;
+
+// Serve pagina login (PUBBLICO)
+app.get('/login', (_req, res) => {
+  res.send(loginHtml);
+});
+
+// MIDDLEWARE GLOBALE DI AUTENTICAZIONE
+app.use((req, res, next) => {
   const isPublicPath = (
     req.path === '/login' || 
     req.path === '/api/login' ||
     req.path === '/favicon.ico'
   );
 
-  // DECISIONE FINALE: Lascia passare se è loggato, è un cron job, o sta accedendo a una pagina pubblica.
-  if (hasValidCookie || hasValidCronSecret || isPublicPath) {
-    next(); 
-  } else {
-    // BLOCCO: Se non autenticato
+  // Permetti accesso a pagine pubbliche
+  if (isPublicPath) {
+    return next();
+  }
+
+  // Controlla autenticazione
+  const authenticated = isAuthenticated(req);
+  
+  console.log(`🔐 ${req.method} ${req.path} - Auth: ${authenticated}`);
+
+  if (!authenticated) {
+    // Non autenticato
     if (req.path.startsWith('/api/')) {
-      // Richieste API: restituisci 401 JSON
+      console.log(`🚫 API bloccata: ${req.path}`);
       return res.status(401).json({ error: "Unauthorized" });
     } else {
-      // Richieste front-end/asset: reindirizza al login
+      console.log(`🚫 Frontend bloccato, redirect a /login`);
       return res.redirect('/login');
     }
   }
+
+  // Autenticato: procedi
+  next();
 });
-// --- FINE SEZIONE AUTENTICAZIONE ---
 
 // Logging middleware
 app.use((req, res, next) => {
@@ -108,37 +127,37 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Registra le routes (DOPO il middleware di autenticazione)
   const server = await registerRoutes(app);
 
+  // Error handler
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
+    console.error(`❌ Error ${status}:`, message);
     res.status(status).json({ message });
   });
 
-  // Frontend serving (DOPO l'autenticazione)
+  // Serving frontend
   if (process.env.NODE_ENV === "development") {
     await setupVite(app, server);
   } else {
     const distPath = path.join(process.cwd(), "dist", "public");
-    console.log("📂 CERCO I FILE QUI:", distPath);
-    console.log("📄 index.html ESISTE?", fs.existsSync(path.join(distPath, "index.html")));
+    console.log("📂 Serving static files from:", distPath);
+    console.log("📄 index.html exists:", fs.existsSync(path.join(distPath, "index.html")));
 
-    // Serve file statici
+    // Serve static files
     app.use(express.static(distPath));
 
-    // Handler per SPA
-    const sendIndexFile = (_req: Request, res: Response) => {
+    // SPA fallback
+    app.get("*", (_req, res) => {
       const indexFile = path.join(distPath, "index.html");
       if (!fs.existsSync(indexFile)) {
-        console.error("❌ index.html non trovato in:", indexFile);
-        return res.status(500).send("index.html non trovato");
+        console.error("❌ index.html not found");
+        return res.status(500).send("Application error: index.html not found");
       }
       res.sendFile(indexFile);
-    };
-    
-    app.get("/", sendIndexFile);
-    app.get("*", sendIndexFile);
+    });
   }
 
   const port = process.env.PORT || 5000;
