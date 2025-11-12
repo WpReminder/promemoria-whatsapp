@@ -22,12 +22,18 @@ const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID || "YOUR_PHONE_NUMB
  */
 const REMINDER_HOURS_BEFORE = 1;
 
+/**
+ * MARGINE DI SICUREZZA (in minuti)
+ * Finestra temporale per catturare appuntamenti anche se il timing non è perfetto
+ */
+const WINDOW_MARGIN_MINUTES = 5;
+
 async function sendWhatsAppMessage(phone, name, time) {
   try {
-    const phoneNumber = phone.replace("+", "");
+    const phoneNumber = phone.replace(/[^0-9]/g, ""); // Rimuovi tutti i caratteri non numerici
     const message = `Ciao ${name}, ti ricordiamo il tuo appuntamento alle ${time} di oggi. A presto!`;
 
-    await axios.post(
+    const response = await axios.post(
       `${WHATSAPP_API_URL}/${PHONE_NUMBER_ID}/messages`,
       {
         messaging_product: "whatsapp",
@@ -43,10 +49,18 @@ async function sendWhatsAppMessage(phone, name, time) {
       }
     );
 
-    return true;
+    console.log(`✅ WhatsApp API response:`, response.data);
+    
+    // Verifica che WhatsApp abbia confermato l'invio
+    if (response.data.messages && response.data.messages.length > 0) {
+      return { success: true, messageId: response.data.messages[0].id };
+    } else {
+      console.error('⚠️ WhatsApp response senza message ID:', response.data);
+      return { success: false, error: 'No message ID in response' };
+    }
   } catch (error) {
-    console.error('WhatsApp API error:', error);
-    return false;
+    console.error('❌ WhatsApp API error:', error.response?.data || error.message);
+    return { success: false, error: error.response?.data || error.message };
   }
 }
 
@@ -95,69 +109,108 @@ export default async function handler(req, res) {
 
   try {
     const now = new Date();
-    const targetTime = new Date(now.getTime() + REMINDER_HOURS_BEFORE * 60 * 60 * 1000);
+    
+    // Calcola la finestra temporale con margine di sicurezza
+    const targetTime = now.getTime() + (REMINDER_HOURS_BEFORE * 60 * 60 * 1000);
+    const windowStart = new Date(targetTime - (WINDOW_MARGIN_MINUTES * 60 * 1000));
+    const windowEnd = new Date(targetTime + (WINDOW_MARGIN_MINUTES * 60 * 1000));
 
-    console.log(`🔍 Cerco appuntamenti tra ${now.toISOString()} e ${targetTime.toISOString()}`);
+    console.log('🕒 === INFORMAZIONI TEMPORALI ===');
+    console.log(`⏰ Ora server (UTC): ${now.toISOString()}`);
+    console.log(`🇮🇹 Ora italiana: ${now.toLocaleString('it-IT', { timeZone: 'Europe/Rome' })}`);
+    console.log(`🎯 Target (UTC): ${new Date(targetTime).toISOString()}`);
+    console.log(`🎯 Target (IT): ${new Date(targetTime).toLocaleString('it-IT', { timeZone: 'Europe/Rome' })}`);
+    console.log(`📅 Finestra ricerca (UTC): ${windowStart.toISOString()} → ${windowEnd.toISOString()}`);
+    console.log(`📅 Finestra ricerca (IT): ${windowStart.toLocaleString('it-IT', { timeZone: 'Europe/Rome' })} → ${windowEnd.toLocaleString('it-IT', { timeZone: 'Europe/Rome' })}`);
 
     // Find appointments in the time window that haven't been reminded
     const result = await pool.query(
       `SELECT * FROM appointments 
        WHERE reminder_sent = false 
        AND datetime >= $1 
-       AND datetime <= $2`,
-      [now.toISOString(), targetTime.toISOString()]
+       AND datetime <= $2
+       ORDER BY datetime ASC`,
+      [windowStart, windowEnd]
     );
 
     const appointments = result.rows;
-    console.log(`📅 Trovati ${appointments.length} appuntamenti da processare`);
+    console.log(`📋 Trovati ${appointments.length} appuntamenti da processare`);
+
+    if (appointments.length > 0) {
+      console.log('📝 Dettagli appuntamenti:');
+      appointments.forEach(apt => {
+        console.log(`  - ID ${apt.id}: ${apt.name} alle ${new Date(apt.datetime).toLocaleString('it-IT', { timeZone: 'Europe/Rome' })} (${apt.phone})`);
+      });
+    }
 
     let sent = 0;
     let failed = 0;
+    const results = [];
 
     for (const appointment of appointments) {
       const appointmentDate = new Date(appointment.datetime);
       const time = appointmentDate.toLocaleTimeString('it-IT', { 
+        timeZone: 'Europe/Rome',
         hour: '2-digit', 
         minute: '2-digit' 
       });
 
-      console.log(`📤 Invio reminder a ${appointment.name} (${appointment.phone}) per ${time}`);
+      console.log(`📤 Invio reminder a ${appointment.name} (${appointment.phone}) per le ${time}`);
 
-      const success = await sendWhatsAppMessage(
+      const result = await sendWhatsAppMessage(
         appointment.phone,
         appointment.name,
         time
       );
 
-      if (success) {
+      if (result.success) {
+        // IMPORTANTE: Marca come inviato SOLO se WhatsApp ha confermato
         await pool.query(
           'UPDATE appointments SET reminder_sent = true WHERE id = $1',
           [appointment.id]
         );
-        console.log(`✅ Reminder inviato con successo a ${appointment.name}`);
+        console.log(`✅ Reminder inviato con successo a ${appointment.name} (Message ID: ${result.messageId})`);
         sent++;
+        results.push({
+          id: appointment.id,
+          name: appointment.name,
+          datetime: appointment.datetime,
+          status: 'sent',
+          message_id: result.messageId
+        });
       } else {
-        console.error(`❌ Fallito invio a ${appointment.name}`);
+        // NON marcare come inviato se fallisce
+        console.error(`❌ Fallito invio a ${appointment.name}:`, result.error);
         failed++;
+        results.push({
+          id: appointment.id,
+          name: appointment.name,
+          datetime: appointment.datetime,
+          status: 'failed',
+          error: result.error
+        });
       }
     }
 
-    console.log(`📊 Risultato: ${sent} inviati, ${failed} falliti su ${appointments.length} totali`);
+    console.log(`📊 === RISULTATO FINALE ===`);
+    console.log(`✅ Inviati: ${sent}`);
+    console.log(`❌ Falliti: ${failed}`);
+    console.log(`📋 Totali: ${appointments.length}`);
 
     return res.status(200).json({
       success: true,
       message: `Processed ${appointments.length} reminders`,
       sent,
       failed,
-      appointments: appointments.map(a => ({
-        id: a.id,
-        name: a.name,
-        datetime: a.datetime
-      }))
+      results
     });
   } catch (error) {
     console.error('💥 Reminder processing error:', error);
-    return res.status(500).json({ error: 'Internal server error', details: error.message });
+    return res.status(500).json({ 
+      success: false,
+      error: 'Internal server error', 
+      details: error.message 
+    });
   } finally {
     await pool.end();
   }
