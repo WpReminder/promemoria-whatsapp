@@ -30,16 +30,35 @@ const WINDOW_MARGIN_MINUTES = 5;
 
 async function sendWhatsAppMessage(phone, name, time) {
   try {
-    const phoneNumber = phone.replace(/[^0-9]/g, ""); // Rimuovi tutti i caratteri non numerici
-    const message = `Ciao ${name}, ti ricordiamo il tuo appuntamento alle ${time} di oggi. A presto!`;
+    const phoneNumber = phone.replace(/[^0-9]/g, "");
 
     const response = await axios.post(
       `${WHATSAPP_API_URL}/${PHONE_NUMBER_ID}/messages`,
       {
         messaging_product: "whatsapp",
         to: phoneNumber,
-        type: "text",
-        text: { body: message },
+        type: "template",
+        template: {
+          name: "Promemoria Appuntamento",
+          language: {
+            code: "it"
+          },
+          components: [
+            {
+              type: "body",
+              parameters: [
+                {
+                  type: "text",
+                  text: name  // {{1}} = nome
+                },
+                {
+                  type: "text",
+                  text: time  // {{2}} = ora
+                }
+              ]
+            }
+          ]
+        }
       },
       {
         headers: {
@@ -51,7 +70,6 @@ async function sendWhatsAppMessage(phone, name, time) {
 
     console.log(`✅ WhatsApp API response:`, response.data);
     
-    // Verifica che WhatsApp abbia confermato l'invio
     if (response.data.messages && response.data.messages.length > 0) {
       return { success: true, messageId: response.data.messages[0].id };
     } else {
