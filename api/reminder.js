@@ -39,7 +39,7 @@ async function sendWhatsAppMessage(phone, name, time) {
         to: phoneNumber,
         type: "template",
         template: {
-          name: "Promemoria Appuntamento",
+          name: "promemoria_appuntamento",
           language: {
             code: "it"
           },
